@@ -1,0 +1,82 @@
+parallel_benchmark.c:276:13: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:276:13: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:295:25: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:295:25: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:319:17: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:319:17: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:418:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:348:29: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:348:29: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:408:22: optimized: loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:408:22: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:435:26: optimized: loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:435:26: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:435:26: optimized: loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:435:26: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:348:29: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:348:29: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:344:40: optimized: loop vectorized using 32 byte vectors and unroll factor 1
+parallel_benchmark.c:344:40: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:319:17: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:319:17: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:317:32: optimized: loop vectorized using 32 byte vectors and unroll factor 1
+parallel_benchmark.c:317:32: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:291:36: optimized: loop vectorized using 32 byte vectors and unroll factor 1
+parallel_benchmark.c:291:36: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:283:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:283:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:283:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:283:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:272:23: optimized: loop vectorized using 32 byte vectors and unroll factor 1
+parallel_benchmark.c:272:23: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:270:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:270:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:270:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:270:6: optimized: basic block part vectorized using 32 byte vectors
+parallel_benchmark.c:259:23: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:259:23: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:116:20: optimized: loop vectorized using 32 byte vectors and unroll factor 32
+parallel_benchmark.c:116:20: optimized: loop vectorized using 32 byte vectors and unroll factor 32
+parallel_benchmark.c:116:20: optimized: loop vectorized using 32 byte vectors and unroll factor 32
+parallel_benchmark.c:665:34: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:650:30: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:725:34: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:710:30: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:262:31: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:725:34: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:710:30: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:725:34: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:710:30: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:408:22: optimized: loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:408:22: optimized:  loop versioned for vectorization because of possible aliasing
+parallel_benchmark.c:295:25: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:295:25: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:276:13: optimized: loop vectorized using 32 byte vectors and unroll factor 4
+parallel_benchmark.c:276:13: optimized: epilogue loop vectorized using 16 byte vectors and unroll factor 2
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:418:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:418:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:418:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 16 byte vectors
+parallel_benchmark.c:418:13: optimized: basic block part vectorized using 8 byte vectors
+parallel_benchmark.c:418:13: optimized: basic block part vectorized using 16 byte vectors
+parallel_benchmark.c:308:13: optimized: basic block part vectorized using 16 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 16 byte vectors
+parallel_benchmark.c:331:13: optimized: basic block part vectorized using 16 byte vectors
