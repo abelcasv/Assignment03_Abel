@@ -194,24 +194,25 @@ In the primary \texttt{omp\_ikj} kernel at $n=2000$ (Table~\ref{tab:thread_scali
 
 \begin{figure}[!htbp]
     \centering
-    \includegraphics[width=0.94\linewidth]{parallel_speedup_curves.png}
+    \includegraphics[width=0.90\linewidth]{parallel_speedup_curves.png}
     \caption{Matched-baseline speedup $S(p) = T_{\text{seq}}(n)/T_p(n)$ for the primary \texttt{omp\_ikj} kernel across thread counts $p$. The dashed line denotes ideal linear speedup; vertical lines mark physical cores (10) and logical processors (12).}
     \label{fig:speedup}
 \end{figure}
 
-Notably, at $p=2$ and $p=4$, the observed medians yield apparent superlinear efficiencies ($129.7\%$ and $109.9\%$), as shown in Figure~\ref{fig:efficiency}. While team sizes, inputs, and timing boundaries were strictly verified, the $p=2$ sample exhibits a wide IQR (\SI{3.7609}{\second}) and the sequential baseline (\SI{15.2589}{\second}, $\text{IQR}=\SI{1.7478}{\second}$) ran earlier in the thermal/frequency cycle without core pinning. Thus, these superlinear ratios are treated as empirical observations influenced by baseline variance, turbo-frequency boosting, or P-core scheduling rather than proof of a single hardware mechanism.
+Notably, at $p=2$ and $p=4$, the observed medians yield apparent superlinear efficiencies ($129.7\%$ and $109.9\%$), as visualised in Figure~\ref{fig:efficiency}.
 
 \begin{figure}[!htbp]
     \centering
-    \includegraphics[width=0.94\linewidth]{parallel_efficiency_curves.png}
+    \includegraphics[width=0.90\linewidth]{parallel_efficiency_curves.png}
     \caption{Parallel efficiency $E(p) = S(p)/p$ for the primary \texttt{omp\_ikj} kernel. Values above $100\%$ remain unclipped; shaded region denotes hardware oversubscription ($p > 12$ logical processors).}
     \label{fig:efficiency}
 \end{figure}
 
+While team sizes, inputs, and timing boundaries were strictly verified, the $p=2$ sample exhibits a wide IQR (\SI{3.7609}{\second}) and the sequential baseline (\SI{15.2589}{\second}, $\text{IQR}=\SI{1.7478}{\second}$) ran earlier in the thermal/frequency cycle without core pinning. Thus, these superlinear ratios are treated as empirical observations influenced by baseline variance, turbo-frequency boosting, or P-core scheduling rather than proof of a single hardware mechanism.
+
 In the secondary blocked comparison at $n=2000$ (Table~\ref{tab:thread_scaling}, right columns), sequential cache blocking (\texttt{seq\_tiled\_b32}, \SI{4.7202}{\second}) is already $3.23\times$ faster than sequential \texttt{seq\_ikj} (\SI{15.2589}{\second}) due to L1/L2 tile reuse. When parallelised against its own baseline, \texttt{omp\_tiled\_b32} reaches \SI{0.6026}{\second} at $p=8$ ($S_{\text{tiled}}(8) = 7.83\times$, $E=97.9\%$), slows slightly at $p=10$ (\SI{0.7208}{\second}) and $p=12$ (\SI{0.6929}{\second}), and achieves its fastest observed median at $p=24$ (\SI{0.5826}{\second}, $S_{\text{tiled}}(24) = 8.10\times$). Because \texttt{omp\_tiled\_b32} statically distributes the outer tile-row loop $\texttt{ii}$ ($\lceil 2000 / 32 \rceil = 63$ tile rows), $p=8$ divides the 63 tile rows almost evenly (7--8 tile rows/thread), whereas $p=10$ and $p=12$ assign unequal chunk counts across heterogeneous P-cores and E-cores; at $p=24$, smaller static chunks (2--3 tile rows/thread) allow faster cores to process multiple threads via OS context switching. Nevertheless, the \SI{0.0200}{\second} difference between $p=8$ and $p=24$ is small and does not support a general claim that oversubscription is beneficial.
 
 Regarding memory, the three-array structural footprint scales from \SI{1.43}{\mebi\byte} ($n=250$) to \SI{91.55}{\mebi\byte} ($n=2000$, Table~\ref{tab:size_scaling}), well below the \SI{2048}{\mebi\byte} budget. The cumulative process peak working set across the entire benchmark run reached \SI{97.36}{\mebi\byte}, reflecting the \SI{91.55}{\mebi\byte} arrays at $n=2000$ plus $\approx \SI{5.81}{\mebi\byte}$ of C runtime and OpenMP thread-pool stack overhead.
-
 \section{Discussion and Limitations}
 The controlled experiments directly answer the research question within the tested scope: shared-memory OpenMP parallelisation substantially accelerates matrix multiplication once matrix dimensions are large enough to amortise team overhead, achieving an $11.08\times$ speedup at $n=2000$ with $p=12$ threads for \texttt{omp\_ikj}, whereas $p=1$ incurs a $7.3\%$ slowdown at $n=2000$ and up to $+100.5\%$ overhead at $n=1500$.
 
