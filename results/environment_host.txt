@@ -1,0 +1,12 @@
+capture_timestamp: 2026-11-01T16:02:55.4851598+00:00
+processor: 13th Gen Intel(R) Core(TM) i5-1335U
+logical_processors_visible_to_process: 12
+physical_cores: 10 (Intel product specification; 2 P-cores + 8 E-cores)
+physical_memory_total_gib: 15.63
+physical_memory_available_at_capture_gib: 3.15
+windows_version: 10.0.26300.0
+windows_build: 26300
+powershell_version: 7.6.5
+gcc_version: gcc.exe (Rev5, Built by MSYS2 project) 16.1.0
+memory_module_type_and_speed: not captured
+affinity: no explicit OpenMP place binding (OMP_PROC_BIND=false; OMP_PLACES unset)

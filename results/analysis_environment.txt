@@ -1,0 +1,7 @@
+analysis_python: Python 3.12.14 (64-bit, MSVC 1944)
+numpy: 2.5.4
+pandas: 3.0.1
+matplotlib: 3.11.2
+reportlab: 4.4.9
+requirements_file: requirements.txt
+note: versions used to analyze the final raw benchmark and produce figures

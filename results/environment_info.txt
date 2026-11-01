@@ -1,0 +1,12 @@
+openmp_spec_version: 202111
+omp_num_procs: 12
+omp_max_threads: 12
+omp_dynamic_status: 0
+compiler: GCC 16.1.0
+build_flags: -Wall -Wextra -O3 -std=c11 -fopenmp -march=native
+omp_proc_bind: false
+omp_places: unset
+omp_schedule: unset
+omp_thread_limit: unset
+omp_max_active_levels: unset
+timestamp: 1793548821
