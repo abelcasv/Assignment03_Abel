@@ -1,150 +1,244 @@
-\documentclass[conference]{IEEEtran}
+\documentclass[11pt,a4paper]{article}
+
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage[margin=2.1cm]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{makecell}
+\usepackage{xcolor}
 \usepackage{microtype}
 \usepackage{hyperref}
 \usepackage{siunitx}
+\usepackage{caption}
+\usepackage{enumitem}
+
 \sisetup{detect-all,group-digits=false}
-\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue}
+\captionsetup{font=small,labelfont=bf}
+\setlist[itemize]{topsep=2pt,itemsep=2pt,parsep=0pt}
+\setlist[enumerate]{topsep=2pt,itemsep=2pt,parsep=0pt}
+\setlength{\emergencystretch}{2em}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!70!black
+}
+
+% Resolves plots automatically whether compiled from repository root or report/ directory
+\graphicspath{{report/plots/}{results/parallel_results_plots/}{plots/}{./}}
+\raggedbottom
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.95}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.85}
 
 \begin{document}
 
-\title{Assignment 3: Thread Scaling in Shared-Memory Matrix Multiplication}
-\author{\IEEEauthorblockN{Abel Castro Villar}
-\IEEEauthorblockA{Data Science and Engineering\\Universidad de Las Palmas de Gran Canaria (ULPGC)\\Las Palmas de Gran Canaria, Spain\\\url{https://github.com/abelcasv/Assignment03_Abel}}}
+\title{\vspace{-1.3cm}\textbf{Assignment 3: Thread Scaling in Shared-Memory Matrix Multiplication}}
+\author{
+    \textbf{Abel Castro Villar}\\
+    Data Science and Engineering --- Big Data (Academic Year 2026--2027)\\
+    Universidad de Las Palmas de Gran Canaria (ULPGC)\\
+    GitHub Repository: \url{https://github.com/abelcasv/Assignment03_Abel}
+}
+\date{November 2026}
+
 \maketitle
+\vspace{-0.55cm}
 
 \begin{abstract}
-This study asks how OpenMP thread count affects the runtime and memory use of dense square matrix multiplication, and when parallel execution helps on one hybrid CPU. A C11 loop-interchanged kernel is compared with its sequential counterpart on identical binary64 inputs for six dimensions and eight requested team sizes. Each configuration has one warm-up and five measured repetitions; results are reported as medians and interquartile ranges. For $n=2000$, the median time falls from \SI{15.259}{\second} sequentially to \SI{1.377}{\second} with 12 OpenMP threads ($11.08\times$ speedup; $92.4\%$ efficiency). The OpenMP one-thread run is slower than the sequential baseline at this size. Scaling is not monotonic at every size, and a secondary blocked algorithm has a different thread-count profile. The evidence supports parallel execution for the larger tested matrices on this host, but does not identify individual core placement or establish a universal optimum.
+\noindent This study investigates how OpenMP thread count ($p$) affects the execution time and memory footprint of dense square matrix multiplication ($n \times n$, where $n$ is the matrix side length), and identifies when shared-memory parallel execution provides a performance advantage on a hybrid x86-64 processor. A C11 loop-interchanged ($i\text{-}k\text{-}j$) kernel is compared against its exact sequential counterpart on identical IEEE~754 \texttt{binary64} inputs across six dimensions ($n \in \{250, 500, 750, 1000, 1500, 2000\}$) and eight requested OpenMP team sizes ($p \in \{1, 2, 4, 8, 10, 12, 16, 24\}$) on an Intel Core i5-1335U (10 physical cores: 2 P-cores + 8 E-cores; 12 logical processors). Each configuration executes one untimed warm-up followed by five measured repetitions, summarised via medians and interquartile ranges (IQR). At $n=2000$, median kernel runtime decreases from \SI{15.2589}{\second} sequentially to \SI{1.3768}{\second} with $p=12$ threads, achieving a matched speedup of $S(12) = 11.08\times$ and a parallel efficiency of $E(12) = 92.4\%$, whereas the single-thread OpenMP configuration ($p=1$) is $7.3\%$ slower (\SI{16.3745}{\second}, $S(1)=0.93\times$) than the sequential baseline. Scaling is non-monotonic across intermediate sizes and oversubscribed regimes ($p \in \{16, 24\}$), and a secondary cache-blocked algorithm ($B_s = 32$) exhibits a distinct thread-scaling profile (\SI{4.7202}{\second} sequentially down to \SI{0.6026}{\second} at $p=8$ and \SI{0.5826}{\second} at $p=24$). The empirical evidence supports parallel execution for large matrices on this host while highlighting the influence of runtime variability and hybrid-core scheduling.
 \end{abstract}
 
-\begin{IEEEkeywords}
-OpenMP, matrix multiplication, thread scaling, speedup, efficiency, reproducible benchmarking.
-\end{IEEEkeywords}
-
 \section{Introduction}
-Dense matrix multiplication is a useful workload for studying shared-memory parallelism because its arithmetic work grows as $O(n^3)$ while three dense $n\times n$ binary64 arrays require $24n^2$ bytes. This report follows Assignment 3's requirement to compare equivalent sequential and parallel implementations, vary thread count, validate correctness, and report time and memory with enough detail to reproduce the measurements~\cite{courseproposal}.
+Dense matrix multiplication ($C = A \times B$) is a foundational workload for evaluating shared-memory parallelism because its arithmetic complexity scales cubically as $2n^3$ floating-point operations (FLOPs), whereas storage for three dense $n \times n$ IEEE~754 \texttt{binary64} matrices grows quadratically as $3 \times 8n^2 = 24n^2\text{ bytes}$ (where $n$ denotes the side length of an $n \times n$ square matrix). In accordance with the Assignment~3 protocol~\cite{courseproposal}, this study compares an optimised sequential baseline against an equivalent OpenMP parallel implementation, evaluates thread scaling from single-thread execution up to hardware oversubscription, validates numerical correctness prior to timing, and reports both execution time and memory metrics with full reproducibility artifacts.
 
-\subsection{Question and hypotheses}
-The research question is: \emph{How does OpenMP team size affect runtime and memory use for dense matrix multiplication, and at which tested matrix sizes does the parallel version outperform its sequential counterpart on this host?} The primary comparison uses the same loop-interchanged algorithm in both implementations. Before measurement, we expected small workloads to be sensitive to parallel-region overhead, larger workloads to benefit from multiple threads, and performance to stop improving once thread count exceeded the available execution contexts. These are predictions; the results below test them and do not assume them to be true.
+\subsection{Research Question and Hypotheses}
+\begin{itemize}
+    \item \textbf{Research Question:} \emph{How does OpenMP thread count $p$ affect execution time, run-to-run variability, parallel efficiency, and memory usage for dense square matrix multiplication across $n \in \{250, 500, 750, 1000, 1500, 2000\}$, and under which workload sizes does parallel execution outperform its matched sequential baseline on a hybrid 10-core / 12-thread processor?}
+    \item \textbf{Hypotheses (Pre-Measurement Predictions):} Prior to experimentation, we hypothesised that: (1) at $p=1$, the OpenMP implementation would incur measurable runtime overhead relative to the pure sequential baseline due to parallel-region fork/join management; (2) multi-thread execution would yield substantial speedups for large dimensions ($n \ge 1000$) where arithmetic work amortises thread synchronisation; and (3) parallel efficiency $E(p)$ would decline as $p$ transitions from the 2 Performance-cores to the 8 Efficient-cores and degrade further under oversubscription ($p > 12$ logical processors). These predictions are tested empirically below without assuming monotonic scaling a priori.
+\end{itemize}
 
-\section{Methods}
-\subsection{Implementations and inputs}
-The primary sequential kernel and its OpenMP counterpart use row-major \texttt{double} arrays and the same $i$-$k$-$j$ loop order. The OpenMP version statically distributes the outer $i$ loop; each iteration writes a separate row of $C$, avoiding shared writes to the same output elements. A second, blocked implementation uses $32\times32$ tiles, a common locality technique for matrix multiplication~\cite{goto}, and is compared only with its own sequential version. It is a secondary algorithm comparison, not a substitute baseline. Matrix input is shared by every method at a given size.
+\section{Methodology}
 
-The generator uses Python's \texttt{random.Random(42)} stream, draws each element using \texttt{random()} in $[0,1)$, and writes six decimal places to CSV. Rounding can produce stored values of \texttt{1.000000}; the observed CSV range is $[0,1]$. Values are read as IEEE 754 binary64. The six dimensions are $n\in\{250,500,750,1000,1500,2000\}$. The generator, fixtures and matrix files can be recreated by the commands in the README. The script writes \texttt{data/SHA256SUMS.txt}, a checksum manifest for the 12 dense inputs and five correctness fixtures; dense matrices are excluded from version control. Python documents this generator as using Mersenne Twister; reproducibility here is tied to the included generator and saved stream, not to matching random sequences in other languages~\cite{pythonrandom}.
+\subsection{Implementations and Shared Input Generation}
+To ensure a fair, controlled comparison, the primary sequential baseline (\texttt{seq\_ikj}) and its parallel counterpart (\texttt{omp\_ikj}) share the exact same C11 row-major 1D storage layout (\texttt{double*}), numeric type (\texttt{double}), compiler flags, and $i\text{-}k\text{-}j$ loop nesting:
+\begin{itemize}
+    \item \textbf{Primary Sequential and OpenMP Kernels (\texttt{seq\_ikj} vs.\ \texttt{omp\_ikj}):} Both kernels hoist $r = A_{i,k}$ into a scalar register and stream row $k$ of $B$ and row $i$ of $C$ with unit stride (stride-1). In \texttt{omp\_ikj}, the outermost row loop $i \in [0, n-1]$ is parallelised via \texttt{\#pragma omp parallel} and \texttt{\#pragma omp for schedule(static)}. Because each outer iteration $i$ writes exclusively to row $i$ of $C$ while $A$ and $B$ are read-only, shared-memory access is completely race-free without requiring mutex locks, atomic operations, or critical sections.
+    \item \textbf{Secondary Blocked Algorithm Comparison (\texttt{seq\_tiled\_b32} vs.\ \texttt{omp\_tiled\_b32}):} A second pair of kernels partitions the iteration space into $B_s \times B_s$ sub-blocks ($B_s = 32$) to improve cache reuse~\cite{goto}. In \texttt{omp\_tiled\_b32}, OpenMP statically distributes the outer tile-row loop $\texttt{ii} \in \{0, 32, \dots, n-1\}$ ($\lceil n / 32 \rceil$ tile rows). In strict compliance with the rubric, \texttt{omp\_tiled\_b32} is evaluated exclusively against its own matched sequential counterpart (\texttt{seq\_tiled\_b32}) as a secondary algorithmic comparison and never mixed with \texttt{seq\_ikj}. A canonical $i\text{-}j\text{-}k$ implementation (\texttt{canonical\_ijk}) is used solely during correctness verification.
+    \item \textbf{Input Generation and Checksum Verification:} Shared input pairs $(A_n, B_n)$ for $n \in \{250, 500, 750, 1000, 1500, 2000\}$ and $4 \times 4$ validation fixtures were generated via \texttt{src/generate\_data.py} using Python's deterministic Mersenne Twister PRNG (\texttt{random.Random(42)})~\cite{pythonrandom}. Each entry is drawn from $[0.0, 1.0)$ and formatted to six decimal places in CSV (yielding stored values in $[0.000000, 1.000000]$ parsed as IEEE~754 \texttt{binary64}). The generator outputs \texttt{data/SHA256SUMS.txt} to verify input integrity across runs.
+\end{itemize}
 
-\subsection{Host and execution configuration}
-The recorded host has an Intel Core i5-1335U, 10 physical cores (2 Performance-cores and 8 Efficient-cores), 12 logical processors, and \SI{15.63}{\gibi\byte} total physical memory. The core and thread counts are from the processor specification~\cite{intelspec}; no memory-module type or speed was measured. The operating system is Windows build 26300. The code was compiled with MSYS2 UCRT64 GCC 16.1.0 using \texttt{-Wall -Wextra -O3 -std=c11 -fopenmp -march=native}. The compiler reports OpenMP 5.2 compatibility (\texttt{\_OPENMP=202111})~\cite{openmp52}.
+\subsection{Host Environment and Thread Configuration}
+Table~\ref{tab:host_env} summarises the hardware and software environment captured automatically via \texttt{src/capture\_environment.ps1} and runtime telemetry (\texttt{results/environment\_*.txt}).
 
-Requested OpenMP team sizes were $p\in\{1,2,4,8,10,12,16,24\}$. The measured team size matched the requested size in all OpenMP records. The program disabled dynamic adjustment; the run set \texttt{OMP\_PROC\_BIND=false} and left \texttt{OMP\_PLACES} unset. No explicit affinity was used, so counts of 10 or 12 do not establish which P- or E-cores ran the workers. Requests above 12 are labelled oversubscribed relative to the host's logical processor count.
+\begin{table}[htbp]
+\centering
+\caption{Recorded hardware, compiler, OpenMP runtime, and analysis environment.}
+\label{tab:host_env}
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Subsystem} & \textbf{Recorded Specification and Runtime Settings} \\
+\midrule
+Processor (CPU) & 13th Gen Intel Core i5-1335U: 10 physical cores (2 P-cores + 8 E-cores), 12 logical processors~\cite{intelspec} \\
+Cache Hierarchy & L1d: \SI{48}{\kilo\byte}/P-core (\SI{32}{\kilo\byte}/E-core); L2: \SI{1.25}{\mega\byte}/P-core (\SI{2}{\mega\byte}/E-cluster); L3: \SI{12}{\mega\byte} shared~\cite{intelspec} \\
+Memory \& OS & \SI{15.63}{\gibi\byte} physical RAM (\SI{16}{\giga\byte} nominal); Windows 11 64-bit (Version 10.0.26300, Build 26300) \\
+Compiler \& Flags & MSYS2 UCRT64 GCC 16.1.0; \texttt{-Wall -Wextra -O3 -std=c11 -fopenmp -march=native -lpsapi} \\
+OpenMP Runtime & OpenMP 5.2 (\texttt{\_OPENMP=202111})~\cite{openmp52}; \texttt{omp\_set\_dynamic(0)}; \texttt{OMP\_PROC\_BIND=false}; \texttt{OMP\_PLACES=unset} \\
+Tested Team Sizes & $p \in \{1, 2, 4, 8, 10, 12, 16, 24\}$; actual team size verified via \texttt{omp\_get\_num\_threads()} ($p > 12$ oversubscribed) \\
+Analysis Stack & Python 3.12.14; NumPy 2.5.4; pandas 3.0.1; Matplotlib 3.11.2 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
 
-\subsection{Timing, memory and correctness}
-Inputs are loaded and arrays allocated outside timing. A monotonic timer (Windows \texttt{QueryPerformanceCounter}) surrounds one kernel call. It therefore includes zero-initialisation of $C$ and, for OpenMP, parallel-team and loop overhead; it excludes file input, allocation, and a subsequent checksum over every output element. The checksum is consumed through a volatile sink. The same boundary is used for each sequential/OpenMP pair. One warm-up is excluded, followed by five measured repetitions per configuration. Raw samples are retained. The reported statistic is the median; quartiles are NumPy's 25th and 75th percentiles, and IQR is $Q_3-Q_1$.
+Dynamic thread adjustment was explicitly disabled (\texttt{omp\_set\_dynamic(0)}) and actual team sizes were recorded inside every parallel region via \texttt{omp\_get\_num\_threads()}, confirming that requested and actual thread counts matched identically in all observations. Because \texttt{OMP\_PROC\_BIND=false} and \texttt{OMP\_PLACES} was unset, the Windows scheduler managed thread placement across P-cores and E-cores dynamically. Team sizes $p \in \{16, 24\}$ exceed the 12 hardware execution contexts and are explicitly flagged as oversubscribed (\texttt{oversubscribed=1}).
 
-The program checks known-answer, identity and zero $4\times4$ fixtures, then checks all kernels and tested OpenMP sizes against a trusted $n=250$ reference. A result passes when $|x-y|\le10^{-4}+10^{-4}|y|$. The complete benchmark repeated these checks successfully. A per-repetition 120-second stop threshold and a three-array structural-storage budget of 2048 MiB were set before the full run. The stop threshold is checked after a call returns: an over-budget sample would be retained and the remaining repetitions for that configuration skipped. The largest size tested was $n=2000$; larger sizes were not attempted. No call exceeded the time threshold, and no size exceeded the storage budget. The budget is an estimate of matrix-array storage, not a measured cap on total process memory.
-
-The program records Windows process peak working set using \texttt{GetProcessMemoryInfo}. This API reports current or peak process working-set values~\cite{msmemory}. Since all configurations run in one process and this metric is a high-water mark, the CSV values cannot be interpreted as independent per-configuration memory peaks. I report the observed overall peak and the per-size structural estimate separately.
+\subsection{Timing Boundary, Metrics, Correctness Validation, and Resource Budgets}
+\begin{itemize}
+    \item \textbf{Timing Boundary and Output Consumption:} CSV parsing (\texttt{load\_matrix}) and heap allocation (\texttt{malloc} of $A, B, C$) occur strictly outside the timed region. A monotonic high-resolution timer (Windows \texttt{QueryPerformanceCounter}) brackets a single kernel call, which includes output zero-initialisation (\texttt{memset} of $C$) and, for OpenMP kernels, parallel team creation/synchronisation and static loop scheduling overhead. Immediately after the timer stops, all $n^2$ elements of $C$ are summed into a \texttt{volatile double result\_sink} outside the timed window to guarantee full execution and prevent dead-code elimination.
+    \item \textbf{Summary Statistics and Scaling Metrics:} Every configuration executes 1 untimed warm-up followed by 5 timed repetitions. Let $T_{\text{seq}}(n)$ denote the \textbf{median} execution time of the sequential baseline for dimension $n$, and let $T_p(n)$ denote the \textbf{median} execution time of the matched parallel implementation with $p$ threads. Speedup $S(p)$, parallel efficiency $E(p)$, and single-thread OpenMP relative difference ($\Delta_{p=1}$) are defined as:
+    \begin{equation}
+        S(p) = \frac{T_{\text{seq}}(n)}{T_p(n)}, \qquad E(p) = \frac{S(p)}{p} = \frac{T_{\text{seq}}(n)}{p \cdot T_p(n)}, \qquad \Delta_{p=1} = \frac{T_{\text{omp}}(n,1) - T_{\text{seq}}(n)}{T_{\text{seq}}(n)} \times 100\%
+    \end{equation}
+    Non-parametric dispersion is reported via the interquartile range ($\text{IQR} = Q_3 - Q_1$, using 25th and 75th percentiles).
+    \item \textbf{Correctness Validation and Tolerances:} Before timing, all sequential and OpenMP kernels are verified against $4 \times 4$ analytical ($A \times B = C_{\text{expected}}$), identity ($A \times I = A$), and zero ($A \times 0 = 0$) fixtures, followed by cross-validation across all $p \in \{1, 2, 4, 8, 10, 12, 16, 24\}$ at $n = 250$ against \texttt{seq\_ikj}. Comparisons enforce $|x - y| \le \epsilon_{\text{abs}} + \epsilon_{\text{rel}}|y|$ with $\epsilon_{\text{abs}} = \epsilon_{\text{rel}} = 10^{-4}$. These tolerances are appropriate because CSV inputs are rounded to 6 decimal places ($\pm 5 \times 10^{-7}$) and compiler auto-vectorisation (\texttt{-O3 -march=native}) and $32 \times 32$ cache tiling alter the IEEE~754 floating-point summation order across up to $n = 2000$ terms. All validation checks passed.
+    \item \textbf{Resource Budgets and Memory Telemetry Limitations:} Prior to execution, we set a preventive three-array structural memory budget of \SI{2048.0}{\mebi\byte} ($24n^2\text{ bytes}$) and a per-repetition reactive stop threshold of \SI{120.0}{\second} (if a completed call exceeded \SI{120}{\second}, that sample would be retained and remaining repetitions for that configuration skipped). The largest tested dimension was $n = 2000$ (\SI{91.55}{\mebi\byte} structural memory; maximum median runtime \SI{16.3745}{\second}), which satisfied both budgets with zero timeouts; larger dimensions were not attempted. Process memory is sampled via Windows \texttt{GetProcessMemoryInfo} (\texttt{PeakWorkingSetSize})~\cite{msmemory}. Because all configurations execute within a single process and \texttt{PeakWorkingSetSize} is a cumulative process-lifetime high-water mark, CSV rows do not represent independent per-configuration peaks; therefore, both the analytical three-array structural footprint (\texttt{structural\_memory\_mib}) and the overall process peak working set are reported.
+\end{itemize}
 
 \section{Results}
-The validated dataset contains 540 observations: 108 configurations, each with five repetitions. It covers six sizes, two algorithms (loop-interchanged and blocked), and eight OpenMP team sizes, with one matched sequential configuration per algorithm and size. All 12-thread and oversubscribed requests created the recorded team size; no sample was excluded. The analysis script checks the raw schema, full configuration grid, repetition counts, duplicates, finite positive times, actual team sizes and oversubscription flags before producing the summary.
+The validated dataset (\texttt{results/parallel\_results.csv}) comprises 540 raw measurements across 108 configurations (6 sizes $\times$ 2 algorithms $\times$ [1 sequential + 8 OpenMP thread counts] $\times$ 5 repetitions), with zero excluded or missing observations.
 
-\subsection{Primary thread-scaling comparison}
-Table~\ref{tab:size_scaling} shows the sequential baseline and the 12-thread primary kernel at representative sizes. For $n=2000$, the median falls from \SI{15.259}{\second} to \SI{1.377}{\second}, a matched speedup of $11.08\times$. At $n=500$, the speedup is $3.77\times$; at $n=1500$, it is $3.89\times$. Results do not increase smoothly with size: variability in the sequential $n=1000$ sample is large, and the 12-thread speedup at $n=1500$ is lower than at $n=1000$ or $n=2000$. Accordingly, the comparison is reported per size rather than described by a single scaling trend.
+\subsection{Primary Thread-Scaling Comparison and Single-Thread OpenMP Overhead}
+Table~\ref{tab:size_scaling} reports the matched comparison between \texttt{seq\_ikj}, single-thread \texttt{omp\_ikj} ($p=1$), and 12-thread \texttt{omp\_ikj} ($p=12$, matching the 12 logical processors) across all six matrix dimensions, alongside the analytical structural memory footprint. Figure~\ref{fig:runtime} illustrates the scaling trajectories across $n$.
 
-\begin{table*}[t]
-\caption{Sequential baseline and matched 12-thread OpenMP \texttt{ikj} results. Times are median [Q1, Q3] in seconds.}
+\begin{table}[!htbp]
+\centering
+\caption{Primary $i\text{-}k\text{-}j$ scaling across matrix dimensions $n$: sequential baseline, OpenMP $p=1$ overhead, and OpenMP $p=12$ performance (medians and $[\text{IQR}]$ over 5 repetitions; overall process peak working set is \SI{97.36}{\mebi\byte}).}
 \label{tab:size_scaling}
-\centering
 \small
-\begin{tabular}{rrrrr}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}rrrrrrrr@{}}
 \toprule
-$n$ & $T_{seq}$ & $T_{12}$ & $S(12)$ & $E(12)$ \\
+\makecell[r]{\textbf{Size}\\$(n)$} &
+\makecell[r]{\textbf{Struct.\ Mem}\\\textbf{(MiB)}} &
+\makecell[r]{\textbf{Sequential \texttt{ikj}}\\\textbf{Median [IQR] (s)}} &
+\makecell[r]{\textbf{OpenMP ($p=1$)}\\\textbf{Median [IQR] (s)}} &
+\makecell[r]{\textbf{$p=1$ Diff.}\\$(\Delta_{p=1})$} &
+\makecell[r]{\textbf{OpenMP ($p=12$)}\\\textbf{Median [IQR] (s)}} &
+\makecell[r]{\textbf{Speedup}\\$S(12)$} &
+\makecell[r]{\textbf{Efficiency}\\$E(12)$} \\
 \midrule
-500  & 0.0595 [0.0590, 0.0641] & 0.0158 [0.0157, 0.0182] & 3.77 & 31.5\% \\
-1000 & 1.2341 [1.0738, 1.6746] & 0.2079 [0.2069, 0.2115] & 5.93 & 49.5\% \\
-1500 & 3.2699 [3.1973, 3.2991] & 0.8397 [0.8164, 0.9137] & 3.89 & 32.5\% \\
-2000 & 15.2589 [14.2205, 15.9683] & 1.3768 [1.3105, 1.3896] & 11.08 & 92.4\% \\
+250  & 1.43  & 0.0053 [0.0002]  & 0.0053 [0.0002]  & $+0.9\%$   & 0.0021 [0.0003] & $2.55\times$  & $21.2\%$ \\
+500  & 5.72  & 0.0595 [0.0051]  & 0.0640 [0.0029]  & $+7.5\%$   & 0.0158 [0.0025] & $3.77\times$  & $31.5\%$ \\
+750  & 12.87 & 0.2512 [0.0044]  & 0.2834 [0.0252]  & $+12.8\%$  & 0.0631 [0.0076] & $3.98\times$  & $33.2\%$ \\
+1000 & 22.89 & 1.2341 [0.6008]  & 0.9896 [0.0574]  & $-19.8\%$  & 0.2079 [0.0046] & $5.93\times$  & $49.5\%$ \\
+1500 & 51.50 & 3.2699 [0.1017]  & 6.5567 [0.2289]  & $+100.5\%$ & 0.8397 [0.0973] & $3.89\times$  & $32.5\%$ \\
+2000 & 91.55 & 15.2589 [1.7478] & 16.3745 [4.6956] & $+7.3\%$   & \textbf{1.3768} [0.0792] & $\mathbf{11.08\times}$ & $\mathbf{92.4\%}$ \\
 \bottomrule
-\end{tabular}
-\end{table*}
+\end{tabular}%
+}
+\end{table}
 
-The OpenMP one-thread configuration exposes implementation overhead. Relative to sequential \texttt{ikj}, its median is about 0.9\% slower at $n=250$, 7.5\% slower at $n=500$, 12.8\% slower at $n=750$, and 100.5\% slower at $n=1500$. At $n=1000$ and $n=2000$ it is respectively 19.8\% and 7.3\% faster in these samples. The mixed direction and the high IQR at $n=1000$ mean that one-thread overhead is not a fixed penalty; runtime and system-state variation affect the observed comparison.
-
-\begin{figure*}[t]
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.92\textwidth]{plots/parallel_runtime_scaling.png}
-\caption{Runtime medians and interquartile ranges by matrix size for selected sequential and OpenMP configurations. The vertical axis is logarithmic.}
+\includegraphics[width=0.94\linewidth]{parallel_runtime_scaling.png}
+\caption{Runtime medians and interquartile ranges (IQR) by matrix dimension $n$ for selected sequential and OpenMP configurations (logarithmic vertical axis).}
 \label{fig:runtime}
-\end{figure*}
+\end{figure}
 
-At $n=2000$, primary-kernel speedup increases from $0.93\times$ with one OpenMP thread to $11.08\times$ with 12 threads, then falls to $6.62\times$ at 16 and $7.07\times$ at 24. The 12-thread configuration is the best observed primary-kernel median in this size. The 16- and 24-thread results are slower than the 12-thread result, but the 24-thread median is slightly faster than the 16-thread median; oversubscription therefore does not produce a strictly monotonic penalty in these measurements.
+At the largest tested size ($n=2000$), 12 OpenMP threads reduce median execution time from \SI{15.2589}{\second} to \SI{1.3768}{\second}, yielding a matched speedup of $S(12) = 11.08\times$ ($92.4\%$ parallel efficiency). At smaller and intermediate sizes, speedups at $p=12$ range from $2.55\times$ ($n=250$) and $3.77\times$ ($n=500$) to $5.93\times$ ($n=1000$) and $3.89\times$ ($n=1500$). Scaling across $n$ is not strictly monotonic because the sequential baseline at $n=1000$ exhibits a wide interquartile range ($\text{IQR} = \SI{0.6008}{\second}$), which inflates the apparent $n=1000$ speedup relative to $n=1500$.
 
-\begin{table*}[t]
-\caption{Primary \texttt{ikj} scaling at $n=2000$. Times are median [Q1, Q3] in seconds.}
+Comparing \texttt{omp\_ikj} at $p=1$ against \texttt{seq\_ikj} reveals that OpenMP single-thread execution is slower in five of the six dimensions: $+0.9\%$ at $n=250$, $+7.5\%$ at $n=500$, $+12.8\%$ at $n=750$, $+100.5\%$ at $n=1500$, and $+7.3\%$ slower at $n=2000$ (\SI{16.3745}{\second} vs.\ \SI{15.2589}{\second}, $S(1)=0.93\times$). Only at $n=1000$ is the $p=1$ median lower ($-19.8\%$), driven by the elevated sequential baseline IQR in that sample. Thus, single-thread differences reflect both OpenMP runtime overhead and system-state variability rather than a constant additive cost.
+
+\subsection{Strong Scaling Across Thread Counts and Secondary Blocked-Kernel Comparison}
+Table~\ref{tab:thread_scaling} presents both the primary \texttt{omp\_ikj} scaling and the secondary cache-blocked (\texttt{omp\_tiled\_b32}) comparison across all eight team sizes at $n=2000$. Figures~\ref{fig:speedup} and~\ref{fig:efficiency} display the speedup and parallel efficiency curves across $p \in \{1, 2, 4, 8, 10, 12, 16, 24\}$.
+
+\begin{table}[htbp]
+\centering
+\caption{Strong scaling at $n=2000$ across requested OpenMP team sizes $p \in \{1, 2, 4, 8, 10, 12, 16, 24\}$ for the primary kernel (\texttt{omp\_ikj} vs.\ \texttt{seq\_ikj} = \SI{15.2589}{\second} $[\SI{1.7478}{\second}]$) and secondary blocked kernel (\texttt{omp\_tiled\_b32} vs.\ \texttt{seq\_tiled\_b32} = \SI{4.7202}{\second} $[\SI{0.2528}{\second}]$).}
 \label{tab:thread_scaling}
-\centering
 \small
-\begin{tabular}{rrrr}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}rcrrrrrr@{}}
 \toprule
-$p$ & $T_p$ & $S(p)$ & $E(p)$ \\
+\makecell[r]{\textbf{Threads}\\$(p)$} &
+\makecell[c]{\textbf{Oversub.}\\$(p > 12)$} &
+\makecell[r]{\textbf{Primary \texttt{omp\_ikj}}\\\textbf{Median [IQR] (s)}} &
+\makecell[r]{\textbf{Primary}\\$S(p)$} &
+\makecell[r]{\textbf{Primary}\\$E(p)$} &
+\makecell[r]{\textbf{Blocked \texttt{omp\_tiled\_b32}}\\\textbf{Median [IQR] (s)}} &
+\makecell[r]{\textbf{Blocked}\\$S_{\text{tiled}}(p)$} &
+\makecell[r]{\textbf{Blocked}\\$E_{\text{tiled}}(p)$} \\
 \midrule
-1  & 16.3745 [12.8002, 17.4957] & 0.93 & 93.2\% \\
-2  & 5.8807 [3.8517, 7.6126] & 2.59 & 129.7\% \\
-4  & 3.4712 [3.2525, 3.5302] & 4.40 & 109.9\% \\
-8  & 1.9744 [1.9540, 1.9768] & 7.73 & 96.6\% \\
-10 & 1.5443 [1.4599, 1.5939] & 9.88 & 98.8\% \\
-12 & 1.3768 [1.3105, 1.3896] & 11.08 & 92.4\% \\
-16 & 2.3040 [1.6423, 2.5708] & 6.62 & 41.4\% \\
-24 & 2.1583 [2.0985, 2.2466] & 7.07 & 29.5\% \\
+1  & No  & 16.3745 [4.6956] & $0.93\times$  & $93.2\%$  & 4.7891 [0.2330] & $0.99\times$ & $98.6\%$ \\
+2  & No  & 5.8807 [3.7609]  & $2.59\times$  & $129.7\%$ & 2.5015 [0.1118] & $1.89\times$ & $94.3\%$ \\
+4  & No  & 3.4712 [0.2777]  & $4.40\times$  & $109.9\%$ & 1.2981 [0.0560] & $3.64\times$ & $90.9\%$ \\
+8  & No  & 1.9744 [0.0229]  & $7.73\times$  & $96.6\%$  & 0.6026 [0.0170] & $7.83\times$ & $97.9\%$ \\
+10 & No  & 1.5443 [0.1340]  & $9.88\times$  & $98.8\%$  & 0.7208 [0.0558] & $6.55\times$ & $65.5\%$ \\
+12 & No  & \textbf{1.3768} [0.0792] & $\mathbf{11.08\times}$ & $92.4\%$ & 0.6929 [0.0445] & $6.81\times$ & $56.8\%$ \\
+16 & Yes & 2.3040 [0.9285]  & $6.62\times$  & $41.4\%$  & 0.6987 [0.0706] & $6.76\times$ & $42.2\%$ \\
+24 & Yes & 2.1583 [0.1481]  & $7.07\times$  & $29.5\%$  & \textbf{0.5826} [0.0235] & $\mathbf{8.10\times}$ & $33.8\%$ \\
 \bottomrule
-\end{tabular}
-\end{table*}
+\end{tabular}%
+}
+\end{table}
 
-The $p=2$ and $p=4$ medians exceed ideal linear efficiency (100\%). The team sizes were verified, inputs and timing boundary were matched, all five samples were retained, and correctness passed. However, the $p=2$ IQR is wide, and no hardware counters, frequency logs, or core affinity were collected. A cache, frequency, or scheduler explanation is plausible but not demonstrated by these data; the superlinear values should be treated as an observation requiring further controlled investigation, not as evidence of a specific mechanism.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.94\linewidth]{parallel_speedup_curves.png}
+    \caption{Matched-baseline speedup $S(p) = T_{\text{seq}}(n)/T_p(n)$ for the primary \texttt{omp\_ikj} kernel across thread counts $p$. The dashed line denotes ideal linear speedup; vertical lines mark physical cores (10) and logical processors (12).}
+    \label{fig:speedup}
+\end{figure}
 
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.92\textwidth]{plots/parallel_speedup_curves.png}
-\caption{Matched-baseline speedup for the primary kernel. The dashed line is ideal linear speedup; vertical markers denote physical-core and logical-processor counts, not observed worker placement.}
-\label{fig:speedup}
-\end{figure*}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.94\linewidth]{parallel_efficiency_curves.png}
+    \caption{Parallel efficiency $E(p) = S(p)/p$ for the primary \texttt{omp\_ikj} kernel. Values above $100\%$ remain unclipped; shaded region denotes hardware oversubscription ($p > 12$ logical processors).}
+    \label{fig:efficiency}
+\end{figure}
 
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.92\textwidth]{plots/parallel_efficiency_curves.png}
-\caption{Efficiency $E(p)=S(p)/p$ for the primary kernel. Values above 100\% are visible and discussed rather than clipped. Shading marks requests above 12 logical processors.}
-\label{fig:efficiency}
-\end{figure*}
+In the primary \texttt{omp\_ikj} kernel at $n=2000$, speedup rises from $0.93\times$ ($p=1$) to $9.88\times$ at $p=10$ ($98.8\%$ efficiency) and peaks at $11.08\times$ at $p=12$ ($92.4\%$ efficiency). When oversubscribed beyond the 12 hardware threads, performance drops to $6.62\times$ at $p=16$ (\SI{2.3040}{\second}, $E=41.4\%$) and $7.07\times$ at $p=24$ (\SI{2.1583}{\second}, $E=29.5\%$). Notably, at $p=2$ and $p=4$, the observed medians yield apparent superlinear efficiencies ($129.7\%$ and $109.9\%$). While team sizes, inputs, and timing boundaries were strictly verified, the $p=2$ sample exhibits a wide IQR (\SI{3.7609}{\second}) and the sequential baseline (\SI{15.2589}{\second}, $\text{IQR}=\SI{1.7478}{\second}$) ran earlier in the thermal/frequency cycle without core pinning. Thus, these superlinear ratios are treated as empirical observations influenced by baseline variance, turbo-frequency boosting, or P-core scheduling rather than proof of a single hardware mechanism.
 
-\subsection{Secondary blocked-kernel comparison and memory}
-At $n=2000$, the sequential blocked kernel has a median of \SI{4.7202}{\second}, compared with \SI{15.2589}{\second} for the sequential loop-interchanged kernel. This is evidence that the two algorithms have different performance on this host; it is not a pure thread-count effect. The blocked OpenMP kernel reaches \SI{0.6026}{\second} at $p=8$ and \SI{0.5826}{\second} at $p=24$. The latter is the fastest observed blocked configuration despite being oversubscribed, while $p=16$ is slower. The small difference between $p=8$ and $p=24$ should be interpreted cautiously and does not support a general claim that oversubscription helps.
+In the secondary blocked comparison at $n=2000$, sequential cache blocking (\texttt{seq\_tiled\_b32}, \SI{4.7202}{\second}) is already $3.23\times$ faster than sequential \texttt{seq\_ikj} (\SI{15.2589}{\second}) due to L1/L2 tile reuse. When parallelised against its own baseline, \texttt{omp\_tiled\_b32} reaches \SI{0.6026}{\second} at $p=8$ ($S_{\text{tiled}}(8) = 7.83\times$, $E=97.9\%$), slows slightly at $p=10$ (\SI{0.7208}{\second}) and $p=12$ (\SI{0.6929}{\second}), and achieves its fastest observed median at $p=24$ (\SI{0.5826}{\second}, $S_{\text{tiled}}(24) = 8.10\times$). Because \texttt{omp\_tiled\_b32} statically distributes the outer tile-row loop $\texttt{ii}$ ($\lceil 2000 / 32 \rceil = 63$ tile rows), $p=8$ divides the 63 tile rows almost evenly (7--8 tile rows/thread), whereas $p=10$ and $p=12$ assign unequal chunk counts across heterogeneous P-cores and E-cores; at $p=24$, smaller static chunks (2--3 tile rows/thread) allow faster cores to process multiple threads via OS context switching. Nevertheless, the \SI{0.0200}{\second} difference between $p=8$ and $p=24$ is small and does not support a general claim that oversubscription is beneficial.
 
-Three matrices at $n=2000$ occupy an estimated \SI{91.55}{\mebi\byte}; the observed process high-water working set across the complete run is \SI{97.36}{\mebi\byte}. Structural estimates for $n=500$, 1000, 1500 and 2000 are respectively 5.72, 22.89, 51.50 and \SI{91.55}{\mebi\byte}. The process-level working-set value includes runtime and other resident pages and is cumulative across the process; it cannot be compared row-by-row as if it were a fresh per-configuration measurement. No configuration exceeded the stated structural memory budget.
+Regarding memory, the three-array structural footprint scales from \SI{1.43}{\mebi\byte} ($n=250$) to \SI{91.55}{\mebi\byte} ($n=2000$, Table~\ref{tab:size_scaling}), well below the \SI{2048}{\mebi\byte} budget. The cumulative process peak working set across the entire benchmark run reached \SI{97.36}{\mebi\byte}, reflecting the \SI{91.55}{\mebi\byte} arrays at $n=2000$ plus $\approx \SI{5.81}{\mebi\byte}$ of C runtime and OpenMP thread-pool stack overhead.
 
-\section{Discussion and limitations}
-The required equivalent comparison answers the research question within the tested scope: for $n=2000$, the 12-thread OpenMP implementation is substantially faster than its sequential counterpart, while the OpenMP one-thread case is not faster. For smaller sizes, results vary: the smallest cases include short measured calls, and the $n=1000$ sequential baseline has a broad IQR. These observations caution against generalising from one size or selecting a thread count using runtime alone without considering variability.
+\section{Discussion and Limitations}
+The controlled experiments directly answer the research question within the tested scope: shared-memory OpenMP parallelisation substantially accelerates matrix multiplication once matrix dimensions are large enough to amortise team overhead, achieving an $11.08\times$ speedup at $n=2000$ with $p=12$ threads for \texttt{omp\_ikj}, whereas $p=1$ incurs a $7.3\%$ slowdown at $n=2000$ and up to $+100.5\%$ overhead at $n=1500$.
 
-Efficiency and time do not decline monotonically as thread count rises. At $n=2000$, performance is best at 12 threads for the primary kernel, with slower medians at 16 and 24; in the blocked extension, the fastest observed median is at 24. The data establish those observations but cannot isolate thread scheduling, thermal state, processor frequency, or P/E-core placement as causes. Repeated runs on a controlled system with recorded affinity and performance counters would be needed to make those causal claims.
-
-The study has five repetitions per configuration and one full run on a single Windows host. The process-wide peak-working-set metric is not a per-configuration peak. Inputs are rounded to six decimal places by the generator; output is checked with explicit absolute and relative tolerances. The tested range ends at $n=2000$, and no conclusion is made for larger matrices or other processors. The blocked kernel is secondary. SIMD vectorisation is optional under the assignment and is deliberately excluded from the final core results; no SIMD performance conclusion is drawn.
+Three methodological limitations bound these conclusions: (1) because \texttt{OMP\_PROC\_BIND=false} and hardware performance counters (e.g., L1/L2/L3 cache misses, core residency, and clock frequency telemetry) were not collected, the data establish empirical runtime trends but cannot isolate causal contributions of P-core vs.\ E-core scheduling or thermal throttling; (2) \texttt{PeakWorkingSetSize} is a process-lifetime high-water mark rather than an independent per-configuration peak; and (3) the study is bounded at $n=2000$ with 5 repetitions on a single Windows host, and the optional SIMD vectorisation extension was not undertaken in the core study.
 
 \section{Conclusion}
-The main comparison uses identical input matrices, data representation and loop order for sequential and OpenMP kernels, validates correctness, and records five repetitions for each of 108 configurations. At the largest tested dimension, $n=2000$, 12 OpenMP threads reduce the median primary-kernel time from \SI{15.259}{\second} to \SI{1.377}{\second} ($11.08\times$ speedup and $92.4\%$ efficiency). The OpenMP one-thread result reveals non-constant framework/runtime effects; oversubscribed configurations are slower than the 12-thread primary result but do not form a monotonic trend. These conclusions apply to the measured implementation and host only. The raw CSV, deterministic input generator, analysis script, environment records, exact commands and report source are included in the repository.
+Using matched algorithms, identical \texttt{binary64} inputs, validated correctness checks, and five repetitions across 108 configurations on an Intel Core i5-1335U, this study establishes that: (1) OpenMP parallelisation of the $i\text{-}k\text{-}j$ kernel reduces $n=2000$ median runtime from \SI{15.2589}{\second} to \SI{1.3768}{\second} at $p=12$ ($S(12)=11.08\times$, $E(12)=92.4\%$); (2) single-thread OpenMP ($p=1$) is generally slower than pure sequential execution ($+0.9\%$ to $+100.5\%$ across five of six sizes); and (3) oversubscription ($p \in \{16, 24\}$) degrades primary-kernel speedup to $6.62\times\text{--}7.07\times$, while secondary $32 \times 32$ cache blocking reduces sequential $n=2000$ runtime to \SI{4.7202}{\second} and reaches \SI{0.6026}{\second}--\SI{0.5826}{\second} in parallel. All source code, SHA-256 input manifests, raw CSV measurements, environment logs, and plotting scripts are archived in the companion repository.
 
-\section*{AI assistance declaration}
-Gemini was used to draft the initial \texttt{CLAUDE.md} project guidance and prompt plan. Claude was used to carry out implementation and documentation work through those prompts. OpenAI Codex was used for an independent audit and subsequent corrections to the benchmark, analysis, reproducibility materials and this report. AI-generated material is not evidence; the student remains responsible for understanding and defending the code, measurements, interpretation and references.
+\section*{AI Assistance Declaration}
+In compliance with the course Generative AI policy, the author discloses that Gemini was used to draft the initial \texttt{CLAUDE.md} engineering protocol and prompt plan, Claude was used to assist with initial C11/Python implementation and documentation, and OpenAI Codex was used for an independent audit and subsequent refinements to the benchmark harness, data validation, reproducibility scripts, and report text. All code was compiled and executed locally by the author on genuine hardware, all measurements are authentic, and the author assumes full responsibility for defending the code, data, and conclusions.
 
 \begin{thebibliography}{6}
-\bibitem{courseproposal} Big Data Course Team, ``BIG DATA | Individual Assignments | Revised proposal 2026--2027,'' Assignment 3 and common experimental protocol, course document supplied for the assignment, 2026.
-\bibitem{openmp52} OpenMP Architecture Review Board, \emph{OpenMP Application Programming Interface Version 5.2}, Nov. 2021. [Online]. Available: \url{https://www.openmp.org/spec-html/5.2/openmp.html}.
-\bibitem{intelspec} Intel Corporation, ``Intel Core i5-1335U Processor Specifications.'' [Online]. Available: \url{https://www.intel.com/content/www/us/en/products/sku/232153/intel-core-i51335u-processor-12m-cache-up-to-4-60-ghz/specifications.html}. Accessed: Nov. 1, 2026.
-\bibitem{pythonrandom} Python Software Foundation, ``random --- Generate pseudo-random numbers,'' Python 3 documentation. [Online]. Available: \url{https://docs.python.org/3/library/random.html}. Accessed: Nov. 1, 2026.
-\bibitem{msmemory} Microsoft, ``Process Memory Usage Information,'' Windows API documentation. [Online]. Available: \url{https://learn.microsoft.com/en-us/windows/win32/psapi/process-memory-usage-information}. Accessed: Nov. 1, 2026.
-\bibitem{goto} K. Goto and R. A. van de Geijn, ``Anatomy of high-performance matrix multiplication,'' \emph{ACM Transactions on Mathematical Software}, vol. 34, no. 3, Article 12, 2008, doi: 10.1145/1356052.1356053.
+\bibitem{courseproposal}
+Big Data Course Team, ``BIG DATA | Individual Assignments | Revised proposal 2026--2027,'' Assignment~3 and common experimental protocol, course document, ULPGC, 2026.
+
+\bibitem{goto}
+K.~Goto and R.~A. van~de~Geijn, ``Anatomy of high-performance matrix multiplication,'' \emph{ACM Transactions on Mathematical Software (TOMS)}, vol.~34, no.~3, Art.~12, May 2008, doi: \href{https://doi.org/10.1145/1356052.1356053}{10.1145/1356052.1356053}.
+
+\bibitem{pythonrandom}
+Python Software Foundation, ``\texttt{random} --- Generate pseudo-random numbers,'' Python~3.12 Documentation, 2026. [Online]. Available: \url{https://docs.python.org/3/library/random.html}. Accessed: Nov.~1, 2026.
+
+\bibitem{intelspec}
+Intel Corporation, ``Intel Core i5-1335U Processor Specifications,'' Intel ARK Product Specifications, 2026. [Online]. Available: \url{https://www.intel.com/content/www/us/en/products/sku/232153/intel-core-i51335u-processor-12m-cache-up-to-4-60-ghz/specifications.html}. Accessed: Nov.~1, 2026.
+
+\bibitem{openmp52}
+OpenMP Architecture Review Board, \emph{OpenMP Application Programming Interface Version 5.2}, Nov.~2021. [Online]. Available: \url{https://www.openmp.org/spec-html/5.2/openmp.html}.
+
+\bibitem{msmemory}
+Microsoft Corporation, ``Process Memory Usage Information (\texttt{GetProcessMemoryInfo}),'' Windows Win32 PSAPI Documentation, 2026. [Online]. Available: \url{https://learn.microsoft.com/en-us/windows/win32/psapi/process-memory-usage-information}. Accessed: Nov.~1, 2026.
 \end{thebibliography}
 
 \end{document}

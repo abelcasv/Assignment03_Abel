@@ -1,8 +1,0 @@
-openmp_spec_version: 202111
-omp_num_procs: 12
-omp_max_threads: 12
-omp_dynamic_status: 0
-omp_proc_bind: unset
-omp_places: unset
-omp_schedule: unset
-timestamp: 1793544228

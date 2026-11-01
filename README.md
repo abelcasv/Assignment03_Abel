@@ -2,97 +2,82 @@
 
 **Course:** Big Data, 2026–2027  
 **Author:** Abel Castro Villar  
-**Repository:** <https://github.com/abelcasv/Assignment03_Abel>
 
-This study measures the effect of OpenMP thread count on dense square matrix multiplication in C. Its required comparison is between the loop-interchanged sequential kernel and the same kernel with OpenMP; the blocked (`B=32`) implementation is a secondary algorithm comparison. SIMD is optional and is not part of the reported core experiment.
+This study measures the effect of OpenMP thread count on dense square matrix multiplication in C11. Its required primary comparison is between the loop-interchanged sequential kernel (`seq_ikj`) and the equivalent OpenMP parallel kernel (`omp_ikj`); the cache-blocked (`B_s=32`) implementation (`seq_tiled_b32` vs. `omp_tiled_b32`) is evaluated against its own matched sequential baseline as a secondary algorithm comparison. SIMD vectorisation extensions are optional and excluded from the core thread-scaling experiment.
 
 ## Study and measurement protocol
 
-- Matrix dimensions are `n ∈ {250, 500, 750, 1000, 1500, 2000}`. Each input pair is shared by all methods at a given `n`; values are IEEE 754 binary64 (`double`).
-- `src/generate_data.py` uses Python's `random.Random(42)` MT19937 generator. It draws each value with `random()` (`[0,1)`) and writes six digits after the decimal point. Rounding means stored CSV values can equal `1.000000`; the observed stored range is `[0,1]`. The script writes `data/SHA256SUMS.txt` for all fixtures and dense matrices. The Python version used for analysis and generation is in `results/analysis_environment.txt`; the 12 current dense input files were regenerated and their SHA-256 hashes matched. Random streams are not assumed to match other languages.
-- Tested OpenMP team sizes are `p ∈ {1, 2, 4, 8, 10, 12, 16, 24}`. The host exposes 12 logical processors; 16 and 24 are oversubscribed. `OMP_PROC_BIND=false`, `OMP_PLACES` unset, and `OMP_DYNAMIC` disabled in the program. No core affinity or P-core/E-core placement is claimed.
-- Each configuration has one warm-up and five measured repetitions. All raw observations are retained. The report uses the median and interquartile range (IQR; 25th to 75th percentile).
-- The monotonic timer covers the kernel call, including zero-initialisation of output matrix `C` and OpenMP team/loop overhead. Input loading and allocation are outside the timed region. A checksum over the full output is calculated after timing and stored in a volatile sink.
-- Correctness is checked on known, identity and zero fixtures, then against a trusted reference for the dense `n=250` input. The comparison tolerance is `|a-b| ≤ 1e-4 + 1e-4|b|`.
-- The benchmark uses a 120-second per-repetition stop threshold: if a completed call exceeds it, that sample is retained and remaining repetitions for that configuration are skipped. It checks a 2,048 MiB structural matrix-storage limit before running each size. The largest size run is 2,000; larger sizes were not attempted. Three `double` matrices require `3 × 8n²` bytes; this excludes runtime and allocator overhead.
-- `peak_memory_mib` is the process resident-set high-water mark on Windows (`GetProcessMemoryInfo` / `PeakWorkingSetSize`). As a single process runs all configurations, this is a process-level high-water observation, not an independent peak-memory value for each configuration. Use `structural_memory_mib` for the per-size three-array storage estimate. The two metrics are different and are not interchangeable.
-- The reference implementation is `canonical_ijk` in the source. The core timing study includes `seq_ikj`, `omp_ikj` and the corresponding sequential/OpenMP blocked kernels. Optional scalar/AVX2 modes are opt-in with `--simd` and excluded from the core CSV and conclusions.
+- **Dimensions and inputs:** Matrix dimensions are `n in {250, 500, 750, 1000, 1500, 2000}`, where `n` is the side length of an `n x n` square matrix. Each input pair is shared by all methods at a given `n`; values are IEEE 754 binary64 (`double`).
+- **Deterministic generator:** `src/generate_data.py` uses Python's `random.Random(42)` MT19937 generator. It draws each value with `random()` in `[0,1)` and writes six digits after the decimal point (stored range `[0.000000, 1.000000]`). The script writes `data/SHA256SUMS.txt` for all validation fixtures and dense matrices. All 12 dense input files were verified against their SHA-256 hashes.
+- **Thread configurations:** Tested OpenMP team sizes are `p in {1, 2, 4, 8, 10, 12, 16, 24}`. The host processor (Intel Core i5-1335U) exposes 10 physical cores (2 P-cores + 8 E-cores) and 12 logical processors; team sizes 16 and 24 are explicitly flagged as oversubscribed (`oversubscribed=1`). Dynamic thread adjustment is disabled (`omp_set_dynamic(0)`), `OMP_PROC_BIND=false`, and `OMP_PLACES` is unset. Actual team sizes are verified inside every parallel region via `omp_get_num_threads()`.
+- **Repetitions and summary statistics:** Each configuration executes one untimed warm-up run followed by five measured repetitions. All raw observations are retained in `results/parallel_results.csv`. Central tendency and variability are reported via the median and interquartile range (`IQR = Q3 - Q1`; 25th to 75th percentile).
+- **Timing boundary and output consumption:** The monotonic timer (`QueryPerformanceCounter` on Windows; `clock_gettime(CLOCK_MONOTONIC)` on POSIX) brackets a single kernel call, including zero-initialisation (`memset`) of output matrix `C` and OpenMP team/loop scheduling overhead. Input CSV loading and heap allocation (`malloc`) occur strictly outside the timed region. Immediately after timing, a full-matrix checksum is accumulated into a `volatile` sink outside the timed window to prevent dead-code elimination.
+- **Correctness validation and tolerances:** Correctness is validated before timing on `4 x 4` analytical known-answer, identity (`A x I = A`), and zero (`A x 0 = 0`) fixtures, followed by cross-validation of all kernels and thread counts against the trusted reference on the `n=250` benchmark input. Comparisons enforce the combined tolerance `|a - b| <= 1e-4 + 1e-4|b|`, which accounts for six-decimal CSV input rounding (`+-5e-7`) and non-associative IEEE 754 floating-point summation order across compiler auto-vectorisation (`-O3 -march=native`) and `32 x 32` cache blocking.
+- **Resource budgets:** The benchmark enforces a preventive three-array structural memory budget of `2,048 MiB` (`24n^2` bytes) prior to buffer allocation and a reactive per-repetition stop threshold of `120 s` (if a completed call exceeds `120 s`, that sample is retained and remaining repetitions for that configuration are skipped). The largest tested size meeting both budgets is `n=2000` (`91.55 MiB` structural memory); larger dimensions were not attempted.
+- **Memory metrics:** `peak_memory_mib` records the OS process resident-set high-water mark (`GetProcessMemoryInfo` / `PeakWorkingSetSize`). Because all configurations execute within a single process, this metric reflects a cumulative process-lifetime high-water mark (`97.36 MiB` overall) rather than an independent per-configuration peak. `structural_memory_mib` reports the exact per-size three-array footprint (`3 x 8n^2` bytes). Both metrics are reported separately and are not interchangeable.
 
 ## Environment
 
-The benchmark host, OS build, available memory, GCC version, OpenMP runtime settings and build flags are captured in `results/environment_host.txt` and `results/environment_info.txt`. Analysis-language/library versions are in `results/analysis_environment.txt`. Processor core counts and architecture are taken from the Intel product specification; the experiment does not pin workers to particular cores. The compiler uses `-Wall -Wextra -O3 -std=c11 -fopenmp -march=native`; the resulting binary is machine-specific.
+The benchmark host, OS build, physical memory, GCC version, OpenMP runtime parameters, and build flags are recorded in `results/environment_host.txt` and `results/environment_info.txt`. Python analysis package versions are recorded in `results/analysis_environment.txt`. The C11 benchmark is compiled with MSYS2 UCRT64 GCC 16.1.0 using `-Wall -Wextra -O3 -std=c11 -fopenmp -march=native -lpsapi`.
 
 ## Repository layout
 
-```text
-data/validation/                 Small known-answer fixtures
-data/dense/                      Generated shared inputs (regenerate below)
-data/SHA256SUMS.txt              Checksums for validation and dense CSV inputs
-src/parallel_benchmark.c         C11/OpenMP benchmark and correctness checks
-src/generate_data.py             Deterministic input generator
-src/Makefile                     Build, validation and pilot targets
-src/capture_environment.ps1      Host metadata capture
-src/analysis/analyze_assignment03.py  CSV checks, summaries and plots
-src/analysis/build_report_pdf.py      Validated, data-driven PDF report builder
-results/parallel_results.csv     Raw full-run observations
-results/parallel_results_summary.csv  Derived medians, quartiles, speedup and efficiency
-results/parallel_results_plots/  Reproducible analysis figures
-results/environment_*.txt       Host, compiler and runtime capture
-results/analysis_environment.txt Analysis-language and library versions
-report/Assignment03_Report.tex   Research report source
-report/Assignment03_Report.pdf   Final PDF generated from the validated CSV
-report/plots/                    Figures embedded in the report
-results/archive/                 Preserved pre-repair data; not the final dataset
-```
+    data/validation/                      Small 4x4 correctness fixtures
+    data/dense/                           Generated shared dense inputs (regenerated locally)
+    data/SHA256SUMS.txt                   SHA-256 checksums for validation and dense CSV inputs
+    src/parallel_benchmark.c              C11/OpenMP benchmark harness and correctness suite
+    src/generate_data.py                  Deterministic input and SHA-256 manifest generator
+    src/Makefile                          Cross-platform build, validation, and pilot targets
+    src/capture_environment.ps1           Host hardware and OS metadata capture script
+    src/analysis/analyze_assignment03.py  Strict CSV validator, summary generator, and plotter
+    results/parallel_results.csv          Raw full-run benchmark observations (540 rows)
+    results/parallel_results_summary.csv  Derived medians, quartiles, IQR, speedup, and efficiency
+    results/parallel_results_plots/       Reproducible 300 DPI analysis figures
+    results/environment_*.txt             Recorded host, compiler, and OpenMP runtime metadata
+    results/analysis_environment.txt      Recorded Python and library versions
+    report/Assignment03_Report.tex        LaTeX research report source
+    report/Assignment03_Report.pdf        Compiled final research report PDF
+    report/plots/                         Figures embedded in the LaTeX report
+    requirements.txt                      Python dependencies for analysis and plotting
 
-The dense input files are generated and intentionally excluded from version control. Regenerate them before a run; this replaces the files in `data/dense/`.
+The large dense CSV files in `data/dense/` are excluded from version control via `.gitignore` and can be deterministically regenerated with `python src/generate_data.py`.
 
 ## Build, validate and run (Windows + MSYS2 UCRT64)
 
-Requires the MSYS2 UCRT64 GCC toolchain with OpenMP and `make`, plus Python 3.12 or later for data generation and analysis.
+Requires the MSYS2 UCRT64 GCC toolchain (`gcc`, `make`, OpenMP) and Python 3.12+.
 
-From the repository root in PowerShell:
+1. **Generate datasets, capture host metadata, compile, and run pre-benchmark validation** (from the repository root in PowerShell):
 
-```powershell
-python src/generate_data.py
-& .\src\capture_environment.ps1
-$env:PATH = 'C:\msys64\ucrt64\bin;C:\msys64\usr\bin;' + $env:PATH
-make -B -C src
-make -C src validate
-```
+       python src/generate_data.py
+       & .\src\capture_environment.ps1
+       $env:PATH = 'C:\msys64\ucrt64\bin;C:\msys64\usr\bin;' + $env:PATH
+       make -B -C src
+       make -C src validate
 
-Run the full core experiment. This overwrites `results/parallel_results.csv` after preserving any existing file as `.bak`:
+2. **Execute the full core benchmark** (automatically backs up any existing `results/parallel_results.csv` to `.bak`):
 
-```powershell
-$env:OMP_PROC_BIND = 'false'
-Remove-Item Env:OMP_PLACES -ErrorAction SilentlyContinue
-Push-Location src
-try { .\parallel_benchmark.exe .. } finally { Pop-Location }
-```
+       $env:OMP_PROC_BIND = 'false'
+       Remove-Item Env:OMP_PLACES -ErrorAction SilentlyContinue
+       Push-Location src
+       try { .\parallel_benchmark.exe .. } finally { Pop-Location }
 
-To run the smaller pilot, use `make -C src pilot`; it writes a separate `results/pilot_results.csv`. To run the optional vectorisation extension, pass `--simd` to the executable and save its output separately with `--output ..\results\simd_results.csv`. The AVX2 path requires a supporting x86-64 processor and must not be mixed with the core thread-scaling conclusions.
+   *(To run the smaller pilot verification grid `n in {250, 500}`, run `make -C src pilot`, which writes `results/pilot_results.csv`).*
 
-Install analysis dependencies and regenerate summary/figures from the raw CSV:
+3. **Validate raw CSV data and regenerate summary statistics and 300 DPI figures:**
 
-```powershell
-python -m pip install -r requirements.txt
-python src/analysis/analyze_assignment03.py
-Copy-Item results/parallel_results_plots/*.png report/plots/ -Force
-python src/analysis/build_report_pdf.py
-```
+       python -m pip install -r requirements.txt
+       python src/analysis/analyze_assignment03.py
+       Copy-Item results/parallel_results_plots/*.png report/plots/ -Force
 
-The analyzer writes `results/parallel_results_summary.csv` and figures to `results/parallel_results_plots/`; copy the figures to `report/plots/` before building the PDF. `build_report_pdf.py` validates the raw data again and generates `report/Assignment03_Report.pdf`. The editable LaTeX source is also provided and compiles in the Codex LaTeX editor. To analyse a pilot or optional run, pass its CSV path as the positional argument and add `--allow-partial` for a deliberately incomplete grid.
+4. **Compile the final PDF report from the LaTeX source:**
+
+       pdflatex -output-directory=report report/Assignment03_Report.tex
+       pdflatex -output-directory=report report/Assignment03_Report.tex
 
 ## Raw data and derived measures
 
-`results/parallel_results.csv` is the source of record. Each row labels method, algorithm, vectorisation mode, `n`, requested and actual team size, oversubscription, numeric type, repetition, elapsed seconds and both memory quantities. Do not replace or delete raw samples; regenerate the summary and plots from the CSV.
-
-Earlier, pre-repair raw and pilot data are retained under `results/archive/` for transparency. Use only `results/parallel_results.csv` for the final report; archived files contain the superseded experimental setup.
-
-For each `n`, speedup is `S(p) = median(T_seq(n)) / median(T_p(n))` using the matching sequential algorithm, and efficiency is `E(p) = S(p) / p`. The `p=1` OpenMP result is reported to expose runtime overhead. A speedup above one is not assumed: the measurements determine whether parallel execution helps at each size.
-
-The analysis script checks schema, finite and positive values, duplicate samples, five repetitions per configuration, matching sequential baselines, actual versus requested team size, oversubscription labels, and the full required size/thread grid before writing the final summary and figures.
+`results/parallel_results.csv` is the authoritative raw measurement record (540 observations across 108 configurations). For each matrix dimension `n` and algorithm, speedup is defined as `S(p) = T_seq(n) / T_p(n)` using the median of 5 repetitions against the matched sequential counterpart, and parallel efficiency is `E(p) = S(p) / p`. Single-thread OpenMP (`p=1`) is explicitly compared against `T_seq(n)` to quantify runtime overhead.
 
 ## AI assistance disclosure
 
-AI assistance must be disclosed in the submitted report. The report records the known tools and their roles; the student should review that statement for completeness before submission and remains responsible for understanding, validating and defending the work.
+In compliance with the course Generative AI policy, the submitted report includes an explicit declaration detailing the supporting AI tools used (`Gemini`, `Claude`, and `OpenAI Codex`) and their scope. All experimental runs were executed locally on the author's hardware, and the author takes full responsibility for defending the code, data, and conclusions.
